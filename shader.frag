@@ -1,4 +1,4 @@
-#version 330 core
+#version 430 core
 
 in vec4 gl_FragCoord;
 out vec4 pxColour;
@@ -18,6 +18,11 @@ uniform vec2 pos;
 #define TEX_HEIGHT 64
 
 uniform int worldmap[MAPWIDTH * MAPHEIGHT];
+
+ layout(std430, binding = 3) buffer dataLayout
+ {
+     uint data_SSBO[];
+ };
 
 void main()
 {
@@ -129,26 +134,36 @@ void main()
 	int d = y * 256 - W_HEIGHT * 128 + lineHeight * 128;  //256 and 128 factors to avoid floats
 	// TODO: avoid the division to speed this up
 	int texY = int(((d * TEX_HEIGHT) * inv_lineHeight)) >> 8;
-//	uint color = textures[texNum + (TEX_HEIGHT * texY + texX) * TEX_WIDTH];
-	//make color darker for y-sides: R, G and B byte each divided through two with a "shift" and an "and"
-//		if (side == 1)
-//		{
-//			color = (color >> 1) & 8355711;
-//		}
 
-//	pxColour = vec4(uint(0xFF) / (color & uint(0xFF)), uint(0xFF) / ((color & uint(0xFF00)) >> 8), uint(0xFF) / ((color & uint(0xFF0000)) >> 16), 1.f);
-//
-	vec4 colour = vec4(1.0f, 0.5f, 0.2f, 1.0f);
-
-	if (side == 1)
-	{
-		colour = vec4(colour.xyz / 2.f, 1.0f);
-	}
-
+	uint color = data_SSBO[texNum * TEX_WIDTH * TEX_HEIGHT + TEX_HEIGHT * texY + texX];
+	
+//	if (color == 128 + 256 * 128 + 65536 * 128)
+//	{
+//		pxColour = vec4(128/256, 128/256, 128/256, 1.0);
+//	}
+	
 	if (y >= drawStart && y <= drawEnd)
 	{
-		pxColour = colour;
+		// make color darker for y-sides: R, G and B byte each divided through two with a "shift" and an "and"
+		if (side == 1)
+		{
+			color = (color >> 1) & 8355711;
+		}
+
+		pxColour = vec4(float((color & 0xFF0000) >> 16) / 255.f, float((color & 0xFF00) >> 8) / 255.f, float(color & 0xFF0000) / 255.f, 1.f);
 	}
+//
+//	vec4 colour = vec4(1.0f, 0.5f, 0.2f, 1.0f);
+//
+//	if (side == 1)
+//	{
+//		colour = vec4(colour.xyz / 2.f, 1.0f);
+//	}
+//
+//	if (y >= drawStart && y <= drawEnd)
+//	{
+//		pxColour = colour;
+//	}
 
 
 //	if (gl_FragCoord.x > W_WIDTH / 2)
