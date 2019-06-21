@@ -94,11 +94,9 @@ void main()
 		perpWallDist = (map.y - pos.y + (1.f - ddaStep.y) / 2.f) / rayDir.y;
 	}
 
+	// Limit to prevent overflow
 	if (perpWallDist < 0.0001f)
-	{
 		perpWallDist = 0.0001f;
-//		pxColour = vec4(1.0f, 0.5f, 0.2f, 1.0f);
-	}
 
 	// Calculate height of line to draw on screen
 	// Also determines wall height (h * a) where a is height multiplier
@@ -137,11 +135,6 @@ void main()
 
 	uint color = data_SSBO[texNum * TEX_WIDTH * TEX_HEIGHT + TEX_HEIGHT * texY + texX];
 	
-//	if (color == 128 + 256 * 128 + 65536 * 128)
-//	{
-//		pxColour = vec4(128/256, 128/256, 128/256, 1.0);
-//	}
-	
 	if (y >= drawStart && y <= drawEnd)
 	{
 		// make color darker for y-sides: R, G and B byte each divided through two with a "shift" and an "and"
@@ -150,28 +143,6 @@ void main()
 			color = (color >> 1) & 8355711;
 		}
 
-		pxColour = vec4(float((color & 0xFF0000) >> 16) / 255.f, float((color & 0xFF00) >> 8) / 255.f, float(color & 0xFF0000) / 255.f, 1.f);
+		pxColour = vec4(float(color & 0xFF) / 255.f, float((color & 0xFF00) >> 8) / 255.f, float((color & 0xFF0000) >> 16) / 255.f, 1.f);
 	}
-//
-//	vec4 colour = vec4(1.0f, 0.5f, 0.2f, 1.0f);
-//
-//	if (side == 1)
-//	{
-//		colour = vec4(colour.xyz / 2.f, 1.0f);
-//	}
-//
-//	if (y >= drawStart && y <= drawEnd)
-//	{
-//		pxColour = colour;
-//	}
-
-
-//	if (gl_FragCoord.x > W_WIDTH / 2)
-//	{
-//		pxColour = vec4(1.0f, 0.5f, 0.2f, 1.0f);
-//	}
-//	else
-//	{
-//		pxColour = vec4(0.0f, 0.5f, 0.2f, 1.0f);
-//	}
 }
