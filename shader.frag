@@ -145,4 +145,77 @@ void main()
 
 		pxColour = vec4(float(color & 0xFF) / 255.f, float((color & 0xFF00) >> 8) / 255.f, float((color & 0xFF0000) >> 16) / 255.f, 1.f);
 	}
+	else
+	{
+		// FLOOR AND CEILING
+		//FLOOR CASTING
+		double floorXWall, floorYWall; //x, y position of the floor texel at the bottom of the wall
+
+		//4 different wall directions possible
+		if (side == 0 && rayDir.x > 0)
+		{
+			floorXWall = map.x;
+			floorYWall = map.y + wallX;
+		}
+		else if (side == 0 && rayDir.x < 0)
+		{
+			floorXWall = map.x + 1.0;
+			floorYWall = map.y + wallX;
+		}
+		else if (side == 1 && rayDir.y > 0)
+		{
+			floorXWall = map.x + wallX;
+			floorYWall = map.y;
+		}
+		else
+		{
+			floorXWall = map.x + wallX;
+			floorYWall = map.y + 1.0;
+		}
+
+		double distWall, distPlayer, currentDist;
+
+		distWall = perpWallDist;
+		distPlayer = 0.0;
+
+		if (drawEnd < 0) drawEnd = W_HEIGHT; //becomes < 0 when the integer overflows
+
+		if (y < drawStart)
+		{
+			currentDist = -W_HEIGHT / (2.0 * y - W_HEIGHT); //you could make a small lookup table for this instead
+
+			double weight = (currentDist - distPlayer) / (distWall - distPlayer);
+
+			double currentFloorX = weight * floorXWall + (1.0 - weight) * pos.x;
+			double currentFloorY = weight * floorYWall + (1.0 - weight) * pos.y;
+
+			// Division by 4 to scale texture for speed;
+			int floorTexX, floorTexY;
+			floorTexX = int(currentFloorX * TEX_WIDTH / 4) % TEX_WIDTH;
+			floorTexY = int(currentFloorY * TEX_HEIGHT / 4) % TEX_HEIGHT;
+
+			uint color = data_SSBO[3 * TEX_WIDTH * TEX_HEIGHT + TEX_HEIGHT * floorTexY + floorTexX];
+			pxColour = vec4(float(color & 0xFF) / 255.f, float((color & 0xFF00) >> 8) / 255.f, float((color & 0xFF0000) >> 16) / 255.f, 1.f);
+
+		}
+		else if (y > drawEnd)
+		{
+			currentDist = W_HEIGHT / (2.0 * y - W_HEIGHT); //you could make a small lookup table for this instead
+
+			double weight = (currentDist - distPlayer) / (distWall - distPlayer);
+
+			double currentFloorX = weight * floorXWall + (1.0 - weight) * pos.x;
+			double currentFloorY = weight * floorYWall + (1.0 - weight) * pos.y;
+
+			// Division by 4 to scale texture for speed;
+			int floorTexX, floorTexY;
+			floorTexX = int(currentFloorX * TEX_WIDTH / 4) % TEX_WIDTH;
+			floorTexY = int(currentFloorY * TEX_HEIGHT / 4) % TEX_HEIGHT;
+
+			uint color = data_SSBO[6 * TEX_WIDTH * TEX_HEIGHT + TEX_HEIGHT * floorTexY + floorTexX];
+			pxColour = vec4(float(color & 0xFF) / 255.f, float((color & 0xFF00) >> 8) / 255.f, float((color & 0xFF0000) >> 16) / 255.f, 1.f);
+
+		}
+
+	}
 }
