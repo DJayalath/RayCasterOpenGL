@@ -1,5 +1,5 @@
 #include <glad/glad.h>
-#include <GLFW/glfw3.h>
+#include <SDL2/SDL.h>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
@@ -26,11 +26,15 @@
 #define TEX_WIDTH 64
 #define TEX_HEIGHT 64
 
-#define MOVESPEED 0.04
-#define ROTSPEED 0.15
+#define MOVESPEED 0.02
+#define ROTSPEED 0.10
 
-GLFWwindow* window;
-unsigned char inputs[350];
+SDL_Window* window = nullptr;
+SDL_GLContext glContext;
+SDL_Event event;
+#define NUM_KEYS 128
+#define NUM_MOUSE 5
+bool m_keys[NUM_KEYS], m_mouse[NUM_MOUSE];
 float frameTime;
 double xlast;
 
@@ -47,12 +51,6 @@ unsigned int shaderID;
 
 void CompileShaders(const char* vertexPath, const char* fragmentPath, const char* geometryPath = nullptr);
 void checkCompileErrors(GLuint shader, std::string type);
-
-bool GetInputPressed(int key) { return inputs[key] & INPUT_PRESSED; }
-bool GetInputHeld(int key) { return inputs[key] & INPUT_HELD; }
-
-void mouse_callback(GLFWwindow* window, double xpos, double ypos);
-void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
 
 int worldMap[MAPWIDTH * MAPHEIGHT] =
 {
@@ -85,40 +83,37 @@ int worldMap[MAPWIDTH * MAPHEIGHT] =
 int main(int argc, char* argv[])
 {
 
-	// ========== GLFW BOILERPLATE ==========
+	// ========== SDL2 BOILERPLATE ==========
 
 	// Initialisation
-	glfwInit();
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-
-	// Fix compilation on OS X
-#ifdef __APPLE__
-	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-#endif
+	SDL_Init(SDL_INIT_EVERYTHING);
+	SDL_GL_SetAttribute(SDL_GL_ACCELERATED_VISUAL, 1);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+	SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
+	SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
+	SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
+	SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
+	SDL_GL_SetAttribute(SDL_GL_BUFFER_SIZE, 32);
+	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
+	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
 	// Create window
-	window = glfwCreateWindow(W_WIDTH, W_HEIGHT, "RayCasterOpenGL", NULL, NULL);
-	if (window == NULL)
-	{
-		std::cout << "Failed to create GLFW window" << std::endl;
-		glfwTerminate();
-	}
-
-	// Set window
-	glfwMakeContextCurrent(window);
-
-	// Callbacks
-	glfwSetCursorPosCallback(window, mouse_callback);
-	glfwSetKeyCallback(window, key_callback);
+	window = SDL_CreateWindow("Ray Caster OpenGL", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, W_WIDTH, W_HEIGHT, SDL_WINDOW_OPENGL);
+	glContext = SDL_GL_CreateContext(window);
 
 	// Capture mouse
-	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+	SDL_SetRelativeMouseMode(SDL_TRUE);
 
 	// GLAD: load all OpenGL function pointers
-	if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
+	if (!gladLoadGLLoader((GLADloadproc)SDL_GL_GetProcAddress))
 		std::cout << "Failed to initialize GLAD" << std::endl;
+
+	atexit(SDL_Quit);
+
+	glViewport(0, 0, W_WIDTH, W_HEIGHT);
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_CULL_FACE);
 
 	// ========== RAY CASTING SETUP ==========
 
@@ -203,8 +198,8 @@ int main(int argc, char* argv[])
 
 	// Add texture data to SSBO
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, SSBO);
-	// GL_STATIC_READ chokepoint!
-	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(texture), texture, GL_STATIC_COPY);
+
+	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(texture), texture, GL_STATIC_READ);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, SSBO);
 
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
@@ -226,54 +221,74 @@ int main(int argc, char* argv[])
 		glClear(GL_COLOR_BUFFER_BIT);
 
 		// Process inputs
-		if (GetInputPressed(GLFW_KEY_ESCAPE)) quit = true;
+		while (SDL_PollEvent(&event) != 0)
+		{
+			switch (event.type)
+			{
+			case SDL_KEYDOWN:
+				if (event.key.keysym.sym < 128)
+					m_keys[event.key.keysym.sym] = true;
+				break;
+			case SDL_KEYUP:
+				if (event.key.keysym.sym < 128)
+					m_keys[event.key.keysym.sym] = false;
+				break;
+			case SDL_MOUSEMOTION:
+
+			{
+				double delta = -1 * double(event.motion.xrel) * frameTime * ROTSPEED;
+
+				// Rotate 90 degrees
+				glm::dmat2 rotation = { glm::dvec2(cos(delta), -sin(delta)), glm::dvec2(sin(delta), cos(delta)) };
+				dir = dir * rotation;
+				plane = plane * rotation;
+			}
+			break;
+			case SDL_QUIT:
+				quit = true;
+				break;
+			default:
+				break;
+			}
+		}
+
+		if (m_keys[SDLK_ESCAPE])
+			quit = true;
 
 		// Normalize if simultaneous perpendicular inputs
 		double multiplier = MOVESPEED;
-		if (GetInputPressed(GLFW_KEY_W) || GetInputPressed(GLFW_KEY_S))
+		if (m_keys[SDLK_w] || m_keys[SDLK_s])
 		{
-			if (GetInputPressed(GLFW_KEY_A) || GetInputPressed(GLFW_KEY_D))
-				multiplier = MOVESPEED * 0.7071067812; // 1 / sqrt(2)
+			if (m_keys[SDLK_a] || m_keys[SDLK_d])
+			{
+				// Multiply by 1/sqrt(2) to normalize speeds when
+				// moving in x and y directions simultaneously
+				multiplier *= 0.70710678118;
+			}
 		}
 
-		if (GetInputPressed(GLFW_KEY_W))
+		if (m_keys[SDLK_w])
 		{
 			if (worldMap[int(pos.x + dir.x * multiplier) + int(pos.y) * MAPWIDTH] == false) pos.x += dir.x * multiplier;
 			if (worldMap[int(pos.x) + int(pos.y + dir.y * multiplier) * MAPWIDTH] == false) pos.y += dir.y * multiplier;
 		}
-		else if (GetInputPressed(GLFW_KEY_S))
+		else if (m_keys[SDLK_s])
 		{
 			if (worldMap[int(pos.x - dir.x * multiplier) + int(pos.y) * MAPWIDTH] == false) pos.x -= dir.x * multiplier;
 			if (worldMap[int(pos.x) + int(pos.y - dir.y * multiplier) * MAPWIDTH] == false) pos.y -= dir.y * multiplier;
 		}
-		if (GetInputPressed(GLFW_KEY_A))
+		if (m_keys[SDLK_a])
 		{
 			// Apply transformation as if moving forwards
 			if (worldMap[int(pos.x - dir.y * multiplier) + int(pos.y) * MAPWIDTH] == false) pos.x -= dir.y * multiplier;
 			if (worldMap[int(pos.x) + int(pos.y + dir.x * multiplier) * MAPWIDTH] == false) pos.y += dir.x * multiplier;
 		}
-		else if (GetInputPressed(GLFW_KEY_D))
+		else if (m_keys[SDLK_d])
 		{
 			// Apply transformation as if moving forwards
 			if (worldMap[int(pos.x + dir.y * multiplier) + int(pos.y) * MAPWIDTH] == false) pos.x += dir.y * multiplier;
 			if (worldMap[int(pos.x) + int(pos.y - dir.x * multiplier) * MAPWIDTH] == false) pos.y -= dir.x * multiplier;
 		}
-
-		// Mouse rotation
-		double xpos, ypos;
-		glfwGetCursorPos(window, &xpos, &ypos);
-		if (xlast != 0)
-		{
-			double delta = xpos - xlast;
-
-			delta *= -1.0 * ROTSPEED * 0.01;
-
-			// Rotate dir and plane
-			glm::dmat2 rotation = { glm::dvec2(cos(delta), -sin(delta)), glm::dvec2(sin(delta), cos(delta)) };
-			dir = dir * rotation;
-			plane = plane * rotation;
-		}
-		xlast = xpos;
 
 		// Activate shader and render
 		glUseProgram(shaderID);
@@ -287,14 +302,13 @@ int main(int argc, char* argv[])
 		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
 		// Update
-		glfwSwapBuffers(window);
-		glfwPollEvents();
+		SDL_GL_SwapWindow(window);
 
 		// ========== TIMING ==========
 
 		oldTime = time;
-		time = glfwGetTime();
-		frameTime = time - oldTime;
+		time = SDL_GetTicks();
+		frameTime = (time - oldTime) / 1000.0;
 		//std::cout << frameTime << std::endl;
 	}
 
@@ -304,53 +318,11 @@ int main(int argc, char* argv[])
 	glDeleteBuffers(1, &VBO);
 	glDeleteBuffers(1, &EBO);
 
-	glfwTerminate();
+	SDL_GL_DeleteContext(glContext);
+	SDL_DestroyWindow(window);
+	SDL_Quit();
 
 	return EXIT_SUCCESS;
-}
-
-void mouse_callback(GLFWwindow* window, double xpos, double ypos)
-{
-	if (mouse_move.first)
-	{
-		mouse_move.last.x = xpos;
-		mouse_move.last.y = ypos;
-		mouse_move.first = false;
-	}
-
-	mouse_move.delta.x = xpos - mouse_move.last.x;
-	mouse_move.delta.y = mouse_move.last.y - ypos; // reversed since y-coordinates go from bottom to top
-
-	mouse_move.last.x = xpos;
-	mouse_move.last.y = ypos;
-
-	//std::cout << x << std::endl;
-	//std::cout << mouse_move.delta.x << std::endl;
-
-	double delta = -1.0 * mouse_move.delta.x * ROTSPEED  * frameTime;
-
-	// Rotate dir and plane
-	glm::dmat2 rotation = { glm::dvec2(cos(delta), -sin(delta)), glm::dvec2(sin(delta), cos(delta)) };
-	dir = dir * rotation;
-	plane = plane * rotation;
-}
-
-void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
-{
-	switch (action)
-	{
-	case GLFW_PRESS:
-		inputs[key] |= INPUT_PRESSED;
-		break;
-	case GLFW_RELEASE:
-		inputs[key] &= ~INPUT_PRESSED & ~INPUT_HELD;
-		break;
-	case GLFW_REPEAT:
-		inputs[key] |= INPUT_HELD;
-		break;
-	default:
-		break;
-	}
 }
 
 void CompileShaders(const char* vertexPath, const char* fragmentPath, const char* geometryPath)
