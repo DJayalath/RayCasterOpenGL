@@ -511,8 +511,13 @@ int main(int argc, char* argv[])
 
 		// Copy pixel buffer to shader
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, SSBO);
-		GLvoid* p = glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
+		uint32_t* p = (uint32_t*)glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_READ_WRITE);
+
 		memcpy(p, &px_buffer[0], sizeof(px_buffer));
+		for (int x = 0; x < 1280; x++)
+		{
+			p[W_WIDTH * 500 + x] = 0xFF00FF00;
+		}
 		glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
 
 		glBindVertexArray(VAO);
