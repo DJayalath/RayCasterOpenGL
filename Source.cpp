@@ -472,7 +472,7 @@ int main(int argc, char* argv[])
 			quit = true;
 
 		// Normalize if simultaneous perpendicular inputs
-		double multiplier = MOVESPEED;
+		double multiplier = MOVESPEED * frameTime * 100.0;
 		if (m_keys[SDLK_w] || m_keys[SDLK_s])
 		{
 			if (m_keys[SDLK_a] || m_keys[SDLK_d])
