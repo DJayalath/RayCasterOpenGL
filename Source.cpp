@@ -207,19 +207,6 @@ int main(int argc, char* argv[])
 	// Compile
 	CompileShaders("./shader.vert", "./shader.frag");
 
-	// Uniforms
-	int uniform_dir = glGetUniformLocation(shaderID, "dir");
-	int uniform_plane = glGetUniformLocation(shaderID, "plane");
-	int uniform_pos = glGetUniformLocation(shaderID, "pos");
-	int uniform_worldmap = glGetUniformLocation(shaderID, "worldmap");
-
-	// Set static uniforms
-	glUseProgram(shaderID);
-
-	glUniform1iv(uniform_worldmap, MAPWIDTH * MAPHEIGHT, worldMap);
-
-
-
 	// ========== VERTEX SETUP ==========
 
 	// Single quad used to draw all pixels
@@ -522,21 +509,11 @@ int main(int argc, char* argv[])
 		// Activate shader and render
 		glUseProgram(shaderID);
 
-		// Dynamic uniforms
-		glUniform2f(uniform_pos, pos.x, pos.y);
-		glUniform2f(uniform_dir, dir.x, dir.y);
-		glUniform2f(uniform_plane, plane.x, plane.y);
-
-		//glBindBuffer(GL_SHADER_STORAGE_BUFFER, SSBO);
-//GLvoid* p = glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
-//memcpy(p, &px_buffer[0], sizeof(px_buffer));
-//glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
-
+		// Copy pixel buffer to shader
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, SSBO);
-
-		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(px_buffer), px_buffer, GL_DYNAMIC_COPY);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, SSBO);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+		GLvoid* p = glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
+		memcpy(p, &px_buffer[0], sizeof(px_buffer));
+		glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
 
 		glBindVertexArray(VAO);
 		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
@@ -549,7 +526,7 @@ int main(int argc, char* argv[])
 		oldTime = time;
 		time = SDL_GetTicks();
 		frameTime = (time - oldTime) / 1000.0;
-		//std::cout << frameTime << std::endl;
+		std::cout << 1.0 / frameTime << std::endl;
 	}
 
 	// ========== CLEAN UP ==========
