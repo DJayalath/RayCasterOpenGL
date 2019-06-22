@@ -166,8 +166,6 @@ int main(int argc, char* argv[])
 
 	glUniform1iv(uniform_worldmap, MAPWIDTH * MAPHEIGHT, worldMap);
 
-
-
 	// ========== VERTEX SETUP ==========
 
 	// Single quad used to draw all pixels
@@ -293,7 +291,7 @@ int main(int argc, char* argv[])
 		// Activate shader and render
 		glUseProgram(shaderID);
 
-		// Dynamic uniforms
+		// Pass dynamic uniforms
 		glUniform2f(uniform_pos, pos.x, pos.y);
 		glUniform2f(uniform_dir, dir.x, dir.y);
 		glUniform2f(uniform_plane, plane.x, plane.y);
