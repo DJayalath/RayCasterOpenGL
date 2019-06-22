@@ -22,7 +22,7 @@
 #define MAPWIDTH 24
 #define MAPHEIGHT 24
 
-#define NUM_TEXTURES 8
+#define NUM_TEXTURES 11
 #define TEX_WIDTH 64
 #define TEX_HEIGHT 64
 
@@ -38,7 +38,7 @@ bool m_keys[NUM_KEYS], m_mouse[NUM_MOUSE];
 float frameTime;
 double xlast;
 
-glm::fvec2 pos, dir, plane;
+glm::dvec2 pos, dir, plane;
 
 struct Mouse
 {
@@ -79,6 +79,56 @@ int worldMap[MAPWIDTH * MAPHEIGHT] =
   2,2,0,0,0,0,0,2,2,2,0,0,0,2,2,0,5,0,5,0,0,0,5,5,
   2,2,2,2,1,2,2,2,2,2,2,1,2,2,2,5,5,5,5,5,5,5,5,5
 };
+
+struct Sprite
+{
+	double x;
+	double y;
+	int texture;
+
+	int uDiv = 1, vDiv = 1;
+	double vMove = 0.0;
+};
+
+#define numSprites 19
+
+Sprite sprite[numSprites] =
+{
+  {20.5, 11.5, 10}, //green light in front of playerstart
+  //green lights in every room
+  {18.5,4.5, 10},
+  {10.0,4.5, 10},
+  {10.0,12.5,10},
+  {3.5, 6.5, 10},
+  {3.5, 20.5,10},
+  {3.5, 14.5,10},
+  {14.5,20.5,10},
+
+  //row of pillars in front of wall: fisheye test
+  {18.5, 10.5, 9},
+  {18.5, 11.5, 9},
+  {18.5, 12.5, 9},
+
+  //some barrels around the map
+  {21.5, 1.5, 8},
+  {15.5, 1.5, 8},
+  {16.0, 1.8, 8},
+  {16.2, 1.2, 8},
+  {3.5,  2.5, 8},
+  {9.5, 15.5, 8},
+  {10.0, 15.1,8},
+  {10.5, 15.8,8},
+};
+
+//1D Zbuffer
+double ZBuffer[W_WIDTH];
+
+//arrays used to sort the sprites
+int spriteOrder[numSprites];
+double spriteDistance[numSprites];
+
+//function used to sort the sprites
+void combSort(int* order, double* dist, int amount);
 
 int main(int argc, char* argv[])
 {
@@ -124,6 +174,7 @@ int main(int argc, char* argv[])
 	double time = 0; //time of current frame
 	double oldTime = 0; //time of previous frame
 
+	uint32_t px_buffer[W_WIDTH * W_HEIGHT];
 	uint32_t texture[NUM_TEXTURES * TEX_WIDTH * TEX_HEIGHT];
 
 	// load some textures
@@ -131,7 +182,8 @@ int main(int argc, char* argv[])
 	{
 		"pics/eagle.png", "pics/redbrick.png", "pics/purplestone.png",
 		"pics/greystone.png", "pics/bluestone.png", "pics/mossy.png",
-		"pics/wood.png", "pics/colorstone.png"
+		"pics/wood.png", "pics/colorstone.png", "pics/barrel.png",
+		"pics/pillar.png", "pics/greenlight.png"
 	};
 
 	for (int i = 0; i < NUM_TEXTURES; i++)
@@ -199,7 +251,7 @@ int main(int argc, char* argv[])
 	// Add texture data to SSBO
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, SSBO);
 
-	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(texture), texture, GL_STATIC_READ);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(px_buffer), px_buffer, GL_DYNAMIC_COPY);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, SSBO);
 
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
@@ -219,6 +271,183 @@ int main(int argc, char* argv[])
 		// Clear previous buffer
 		glClearColor(0, 0, 0, 0);
 		glClear(GL_COLOR_BUFFER_BIT);
+
+		// ========== RAY CASTING ==========
+				// Ray cast for every vertical line of pixels in window
+		for (int x = 0; x < W_WIDTH; x++)
+		{
+			// Map window coordinates to camera plane such that right = 1, left = -1
+			double cameraX = (x / double(W_WIDTH)) * 2 - 1;
+
+			// Ray direcrtion = direction vector + fraction of camera plane it passes through
+			glm::dvec2 rayDir = dir + plane * cameraX;
+
+			// DDA variables
+
+			// which box of the map we're in
+			glm::ivec2 map = static_cast<glm::ivec2>(pos);
+
+			//length of ray from current position to next x or y-side
+			glm::dvec2 sideDist;
+
+			//length of ray from one x or y-side to next x or y-side
+			glm::dvec2 deltaDist = glm::abs(1.0 / rayDir); // PROBLEM?
+			double perpWallDist;
+
+			//what direction to step in x or y-direction (either +1 or -1)
+			glm::ivec2 step;
+
+			bool hit = false; //was there a wall hit?
+			int side; //was a NS or a EW wall hit?
+
+			// Setup DDA, calc actual distances
+
+			if (rayDir.x < 0)
+			{
+				step.x = -1;
+				sideDist.x = (pos.x - map.x) * deltaDist.x;
+			}
+			else
+			{
+				step.x = 1;
+				sideDist.x = (map.x + 1.0 - pos.x) * deltaDist.x;
+			}
+			if (rayDir.y < 0)
+			{
+				step.y = -1;
+				sideDist.y = (pos.y - map.y) * deltaDist.y;
+			}
+			else
+			{
+				step.y = 1;
+				sideDist.y = (map.y + 1.0 - pos.y) * deltaDist.y;
+			}
+
+			// Run DDA
+			while (!hit)
+			{
+				//jump to next map square, OR in x-direction, OR in y-direction
+				if (sideDist.x < sideDist.y)
+				{
+					sideDist.x += deltaDist.x;
+					map.x += step.x;
+					side = 0;
+				}
+				else
+				{
+					sideDist.y += deltaDist.y;
+					map.y += step.y;
+					side = 1;
+				}
+				//Check if ray has hit a wall
+				if (worldMap[map.y * MAPWIDTH + map.x] > 0) hit = true;
+			}
+
+			//Calculate distance projected on camera direction (Euclidean distance will give fisheye effect!)
+			if (side == 0) perpWallDist = (map.x - pos.x + (1 - step.x) / 2) / rayDir.x;
+			else           perpWallDist = (map.y - pos.y + (1 - step.y) / 2) / rayDir.y;
+
+			if (perpWallDist < 0.0001f)
+				perpWallDist = 0.0001f;
+
+			// Calculate height of line to draw on screen
+			// Also determines wall height (h * a) where a is height multiplier
+			int lineHeight = (int)(W_HEIGHT / perpWallDist);
+
+			// Limit lineHeight to prevent integer overflow
+			if (lineHeight > 0xFFFF)
+				lineHeight = 0xFFFF;
+
+			//calculate lowest and highest pixel to fill in current stripe
+			int drawStart = -lineHeight / 2 + W_HEIGHT / 2;
+			if (drawStart < 0) drawStart = 0;
+			int drawEnd = lineHeight / 2 + W_HEIGHT / 2;
+			if (drawEnd >= W_HEIGHT) drawEnd = W_HEIGHT - 1;
+
+			//texturing calculations
+			int texNum = worldMap[map.y * MAPWIDTH + map.x] - 1; //1 subtracted from it so that texture 0 can be used!
+
+			//calculate value of wallX
+			double wallX; //where exactly the wall was hit
+			if (side == 0) wallX = pos.y + perpWallDist * rayDir.y;
+			else           wallX = pos.x + perpWallDist * rayDir.x;
+			wallX -= floor((wallX));
+
+			//x coordinate on the texture
+			int texX = int(wallX * double(TEX_WIDTH));
+			if (side == 0 && rayDir.x > 0) texX = TEX_WIDTH - texX - 1;
+			if (side == 1 && rayDir.y < 0) texX = TEX_WIDTH - texX - 1;
+
+			float inv_lineHeight = 1.f / lineHeight;
+			for (int y = drawStart; y < drawEnd; y++)
+			{
+				int d = y * 256 - W_HEIGHT * 128 + lineHeight * 128;  //256 and 128 factors to avoid floats
+				// TODO: avoid the division to speed this up
+				int texY = int(((d * TEX_HEIGHT) * inv_lineHeight)) >> 8;
+				Uint32 color = texture[texNum * TEX_WIDTH * TEX_HEIGHT + TEX_HEIGHT * texY + texX];
+				//make color darker for y-sides: R, G and B byte each divided through two with a "shift" and an "and"
+				if (side == 1) color = (color >> 1) & 8355711;
+				px_buffer[y * (W_WIDTH) + x] = color;
+			}
+
+			//SET THE ZBUFFER FOR SPRITE CASTING
+			ZBuffer[x] = perpWallDist; //perpendicular distance is used
+
+			//FLOOR CASTING
+			double floorXWall, floorYWall; //x, y position of the floor texel at the bottom of the wall
+
+			//4 different wall directions possible
+			if (side == 0 && rayDir.x > 0)
+			{
+				floorXWall = map.x;
+				floorYWall = map.y + wallX;
+			}
+			else if (side == 0 && rayDir.x < 0)
+			{
+				floorXWall = map.x + 1.0;
+				floorYWall = map.y + wallX;
+			}
+			else if (side == 1 && rayDir.y > 0)
+			{
+				floorXWall = map.x + wallX;
+				floorYWall = map.y;
+			}
+			else
+			{
+				floorXWall = map.x + wallX;
+				floorYWall = map.y + 1.0;
+			}
+
+			double distWall, distPlayer, currentDist;
+
+			distWall = perpWallDist;
+			distPlayer = 0.0;
+
+			if (drawEnd < 0) drawEnd = W_HEIGHT; //becomes < 0 when the integer overflows
+
+			//draw the floor from drawEnd to the bottom of the screen
+			for (int y = drawEnd + 1; y < W_HEIGHT; y++)
+			{
+				currentDist = W_HEIGHT / (2.0 * y - W_HEIGHT); //you could make a small lookup table for this instead
+
+				double weight = (currentDist - distPlayer) / (distWall - distPlayer);
+
+				double currentFloorX = weight * floorXWall + (1.0 - weight) * pos.x;
+				double currentFloorY = weight * floorYWall + (1.0 - weight) * pos.y;
+
+				// Division by 4 to scale texture for speed;
+				int floorTexX, floorTexY;
+				floorTexX = int(currentFloorX * TEX_WIDTH / 4) % TEX_WIDTH;
+				floorTexY = int(currentFloorY * TEX_HEIGHT / 4) % TEX_HEIGHT;
+
+				//floor
+				Uint32 c = (texture[6 * TEX_WIDTH * TEX_HEIGHT + TEX_HEIGHT * floorTexY + floorTexX] >> 1) & 8355711;
+				px_buffer[y * (W_WIDTH) + x] = c;
+				//ceiling (symmetrical!)
+				Uint32 c2 = texture[3 * TEX_WIDTH * TEX_HEIGHT + TEX_HEIGHT * floorTexY + floorTexX];
+				px_buffer[(W_HEIGHT - y) * (W_WIDTH) + x] = c2;
+			}
+		}
 
 		// Process inputs
 		while (SDL_PollEvent(&event) != 0)
@@ -297,6 +526,17 @@ int main(int argc, char* argv[])
 		glUniform2f(uniform_pos, pos.x, pos.y);
 		glUniform2f(uniform_dir, dir.x, dir.y);
 		glUniform2f(uniform_plane, plane.x, plane.y);
+
+		//glBindBuffer(GL_SHADER_STORAGE_BUFFER, SSBO);
+//GLvoid* p = glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
+//memcpy(p, &px_buffer[0], sizeof(px_buffer));
+//glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, SSBO);
+
+		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(px_buffer), px_buffer, GL_DYNAMIC_COPY);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, SSBO);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
 		glBindVertexArray(VAO);
 		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
