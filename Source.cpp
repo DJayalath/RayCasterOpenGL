@@ -260,7 +260,7 @@ int main(int argc, char* argv[])
 		glClear(GL_COLOR_BUFFER_BIT);
 
 		// ========== RAY CASTING ==========
-				// Ray cast for every vertical line of pixels in window
+		// Ray cast for every vertical line of pixels in window
 		for (int x = 0; x < W_WIDTH; x++)
 		{
 			// Map window coordinates to camera plane such that right = 1, left = -1
