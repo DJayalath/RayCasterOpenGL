@@ -1,5 +1,5 @@
 # RayCasterOpenGL
-3D ray casting engine written using GLSL shader code
+3D ray casting engine written using GLSL shader code.
 
 All ray casting calculations done on GPU fragment shader (see ``shader.frag``)
 
