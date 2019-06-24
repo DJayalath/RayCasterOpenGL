@@ -9,8 +9,5 @@ See [CPU_Casting](https://github.com/armytricks/RayCasterOpenGL/tree/CPU_Casting
 
 Based on https://lodev.org/cgtutor/raycasting.html
 
-## Textured
-![Textured screenshot](https://raw.githubusercontent.com/armytricks/3DRayCastingEngine/master/scr_textured.png)
-
-## Untextured
-![Untextured screenshot](https://raw.githubusercontent.com/armytricks/3DRayCastingEngine/master/scr_untextured.png)
+## Images
+![Textured screenshot](https://raw.githubusercontent.com/armytricks/RayCasterOpenGL/master/scr.png)
